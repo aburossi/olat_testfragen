@@ -1,0 +1,5 @@
+os
+google.generativeai as genai
+mimetypes
+docx2txt
+importlib
