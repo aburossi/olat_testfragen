@@ -12,10 +12,14 @@ except ImportError:
     transform_script_1 = None
 
 def process_text_file(file):
-    if file.name.lower().endswith('.docx'):
-        return docx2txt.process(file)
-    else:  # For .txt, .md, and other text files
-        return file.getvalue().decode('utf-8')
+    try:
+        if file.name.lower().endswith('.docx'):
+            return docx2txt.process(file)
+        else:  # For .txt, .md, and other text files
+            return file.getvalue().decode('utf-8')
+    except Exception as e:
+        st.error(f"Error processing file: {e}")
+        return ""
 
 def correct_german_chars(text):
     return text.replace('ß', 'ss')
@@ -693,10 +697,7 @@ Max	2000
         uploaded_file = st.file_uploader("Choose a file", type=["txt", "docx"])
         if uploaded_file:
             file_prefix = os.path.splitext(uploaded_file.name)[0]
-            try:
-                content = process_text_file(uploaded_file)
-            except Exception as e:
-                st.error(f"Error processing file: {e}")
+            content = process_text_file(uploaded_file)
     else:
         content = st.text_area("Enter your text here:")
 
