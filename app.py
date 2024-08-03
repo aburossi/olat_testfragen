@@ -1,18 +1,11 @@
 import os
 import streamlit as st
-import google.generativeai as genai
-import mimetypes
+import openai
 import docx2txt
 import importlib
 
 # Import transformation scripts
 transform_script_1 = importlib.import_module("transform_script_1")
-
-def upload_to_gemini(file, mime_type=None):
-    """Uploads the given file to Gemini."""
-    genai_file = genai.upload_file(file, mime_type=mime_type)
-    st.write(f"Uploaded file '{genai_file.display_name}' as: {genai_file.uri}")
-    return genai_file
 
 def process_text_file(file):
     if file.name.lower().endswith('.docx'):
@@ -30,35 +23,19 @@ def save_response(text, index, suffix="", file_prefix="", output_folder="."):
     return output_filename
 
 def main():
-    st.title("Gemini API Text Generator")
+    st.title("OpenAI Text Generator")
 
-    # User input for Gemini API key
-    api_key = st.text_input("Enter your Gemini API key:", type="password")
+    # User input for OpenAI API key
+    api_key = st.text_input("Enter your OpenAI API key:", type="password")
     if not api_key:
-        st.warning("Please enter your Gemini API key to proceed.")
+        st.warning("Please enter your OpenAI API key to proceed.")
         return
 
-    genai.configure(api_key=api_key)
-
-    # Create the model
-    generation_config = {
-        "temperature": 0.5,
-        "top_p": 0.95,
-        "top_k": 64,
-        "max_output_tokens": 8192,
-        "response_mime_type": "text/plain",
-    }
-
-    model = genai.GenerativeModel(
-        model_name="gemini-1.5-pro",
-        generation_config=generation_config,
-        system_instruction="""
-placeholder
-        """
-    )
+    openai.api_key = api_key
 
     # Pre-saved messages to send to the model
     messages = [
+
         """//steps SC
 1. The user uploads an image file with content from a textbook.
 2. You always answer in German per 'Sie-Form' or in the Language of the upload
@@ -707,14 +684,10 @@ Max	2000
     input_method = st.radio("Choose input method:", ["File Upload", "Text Input"])
 
     if input_method == "File Upload":
-        uploaded_file = st.file_uploader("Choose a file", type=["txt", "docx", "png", "jpg", "jpeg"])
+        uploaded_file = st.file_uploader("Choose a file", type=["txt", "docx"])
         if uploaded_file:
             file_prefix = os.path.splitext(uploaded_file.name)[0]
-            mime_type, _ = mimetypes.guess_type(uploaded_file.name)
-            if mime_type and mime_type.startswith('image/'):
-                content = upload_to_gemini(uploaded_file, mime_type)
-            else:
-                content = process_text_file(uploaded_file)
+            content = process_text_file(uploaded_file)
     else:
         content = st.text_area("Enter your text here:")
         file_prefix = "manual_input"
@@ -727,32 +700,45 @@ Max	2000
         output_folder = "output"
         os.makedirs(output_folder, exist_ok=True)
 
-        chat_session = model.start_chat()
-        initial_response = chat_session.send_message([content, "wait for the next interaction of the user."])
+        # Initial message
+        initial_messages = [
+            {"role": "system", "content": "You are a helpful assistant that generates educational content."},
+            {"role": "user", "content": content + "\nwait for the next interaction of the user."}
+        ]
 
-        # Save the initial response
-        initial_filename = save_response(initial_response.text, 0, file_prefix=file_prefix, output_folder=output_folder)
+        initial_response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=initial_messages
+        )
+
+        initial_content = initial_response.choices[0].message['content']
+        initial_filename = save_response(initial_content, 0, file_prefix=file_prefix, output_folder=output_folder)
         st.download_button(
             label=f"Download Initial Response",
-            data=initial_response.text,
+            data=initial_content,
             file_name=os.path.basename(initial_filename),
             mime="text/plain"
         )
 
         # Process each pre-saved message
-        for i, message in enumerate(messages, 1):
-            response = chat_session.send_message(message)
-            filename = save_response(response.text, i, file_prefix=file_prefix, output_folder=output_folder)
+        for i, message in enumerate(messages[1:], 1):  # Skip the system message
+            chat_messages = initial_messages + [message]
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=chat_messages
+            )
+            response_content = response.choices[0].message['content']
+            filename = save_response(response_content, i, file_prefix=file_prefix, output_folder=output_folder)
             st.download_button(
                 label=f"Download Response {i}",
-                data=response.text,
+                data=response_content,
                 file_name=os.path.basename(filename),
                 mime="text/plain"
             )
 
             # Apply transformation if configured
             if i == 6:  # Assuming we want to transform the 6th response
-                transformed_text = transform_script_1.transform_output(response.text)
+                transformed_text = transform_script_1.transform_output(response_content)
                 transformed_filename = save_response(transformed_text, i, suffix="_transformed", file_prefix=file_prefix, output_folder=output_folder)
                 st.download_button(
                     label=f"Download Transformed Response {i}",
