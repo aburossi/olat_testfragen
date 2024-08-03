@@ -1,5 +1,5 @@
 os
-google.generativeai as genai
+google.generativeai
 mimetypes
 docx2txt
 importlib
