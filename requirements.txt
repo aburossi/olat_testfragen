@@ -3,3 +3,4 @@ google.generativeai
 mimetypes
 docx2txt
 importlib
+streamlit
