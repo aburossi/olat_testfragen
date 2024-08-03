@@ -5,7 +5,11 @@ import docx2txt
 import importlib
 
 # Import transformation scripts
-transform_script_1 = importlib.import_module("transform_script_1")
+try:
+    transform_script_1 = importlib.import_module("transform_script_1")
+except ImportError:
+    st.error("Transformation script not found. Please ensure 'transform_script_1' is available.")
+    transform_script_1 = None
 
 def process_text_file(file):
     if file.name.lower().endswith('.docx'):
@@ -35,7 +39,6 @@ def main():
 
     # Pre-saved messages to send to the model
     messages = [
-
         """//steps SC
 1. The user uploads an image file with content from a textbook.
 2. You always answer in German per 'Sie-Form' or in the Language of the upload
@@ -683,14 +686,19 @@ Max	2000
     # Input method selection
     input_method = st.radio("Choose input method:", ["File Upload", "Text Input"])
 
+    content = ""
+    file_prefix = "manual_input"
+
     if input_method == "File Upload":
         uploaded_file = st.file_uploader("Choose a file", type=["txt", "docx"])
         if uploaded_file:
             file_prefix = os.path.splitext(uploaded_file.name)[0]
-            content = process_text_file(uploaded_file)
+            try:
+                content = process_text_file(uploaded_file)
+            except Exception as e:
+                st.error(f"Error processing file: {e}")
     else:
         content = st.text_area("Enter your text here:")
-        file_prefix = "manual_input"
 
     if st.button("Process"):
         if not content:
@@ -706,10 +714,14 @@ Max	2000
             {"role": "user", "content": content + "\nwait for the next interaction of the user."}
         ]
 
-        initial_response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=initial_messages
-        )
+        try:
+            initial_response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=initial_messages
+            )
+        except Exception as e:
+            st.error(f"Error with OpenAI API: {e}")
+            return
 
         initial_content = initial_response.choices[0].message['content']
         initial_filename = save_response(initial_content, 0, file_prefix=file_prefix, output_folder=output_folder)
@@ -723,29 +735,36 @@ Max	2000
         # Process each pre-saved message
         for i, message in enumerate(messages[1:], 1):  # Skip the system message
             chat_messages = initial_messages + [message]
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=chat_messages
-            )
-            response_content = response.choices[0].message['content']
-            filename = save_response(response_content, i, file_prefix=file_prefix, output_folder=output_folder)
-            st.download_button(
-                label=f"Download Response {i}",
-                data=response_content,
-                file_name=os.path.basename(filename),
-                mime="text/plain"
-            )
-
-            # Apply transformation if configured
-            if i == 6:  # Assuming we want to transform the 6th response
-                transformed_text = transform_script_1.transform_output(response_content)
-                transformed_filename = save_response(transformed_text, i, suffix="_transformed", file_prefix=file_prefix, output_folder=output_folder)
+            try:
+                response = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo",
+                    messages=chat_messages
+                )
+                response_content = response.choices[0].message['content']
+                filename = save_response(response_content, i, file_prefix=file_prefix, output_folder=output_folder)
                 st.download_button(
-                    label=f"Download Transformed Response {i}",
-                    data=transformed_text,
-                    file_name=os.path.basename(transformed_filename),
+                    label=f"Download Response {i}",
+                    data=response_content,
+                    file_name=os.path.basename(filename),
                     mime="text/plain"
                 )
+
+                # Apply transformation if configured
+                if i == 6 and transform_script_1:  # Assuming we want to transform the 6th response
+                    try:
+                        transformed_text = transform_script_1.transform_output(response_content)
+                        transformed_filename = save_response(transformed_text, i, suffix="_transformed", file_prefix=file_prefix, output_folder=output_folder)
+                        st.download_button(
+                            label=f"Download Transformed Response {i}",
+                            data=transformed_text,
+                            file_name=os.path.basename(transformed_filename),
+                            mime="text/plain"
+                        )
+                    except Exception as e:
+                        st.error(f"Error applying transformation: {e}")
+
+            except Exception as e:
+                st.error(f"Error with OpenAI API: {e}")
 
         st.success("Processing complete!")
 
