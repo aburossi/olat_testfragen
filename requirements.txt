@@ -1,6 +1,5 @@
-os
-google.generativeai
-mimetypes
-docx2txt
-importlib
 streamlit
+google-generativeai
+docx2txt
+mimetypes
+importlib
