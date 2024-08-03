@@ -1,5 +1,5 @@
+os
 streamlit
 openai
 docx2txt
-mimetypes
 importlib
